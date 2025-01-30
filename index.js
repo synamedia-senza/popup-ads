@@ -1,5 +1,6 @@
-import { init, uiReady, ShakaPlayer, lifecycle, isRunningE2E, alarmManager } from "senza-sdk";
+import { init, uiReady, ShakaPlayer, lifecycle } from "senza-sdk";
 import lifecycleAdditions from "./lifecycle-additions.js";
+import { scheduleEvent, clearEvents } from "./scheduleEvent.js"
 import popups from "./popups.js";
 
 const TEST_VIDEO = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd";
@@ -31,14 +32,14 @@ function getNextEvent(currentTime) {
     if (item.startTime > currentTime) {
       return {
         name: "showPopup",
-        func: showPopup,
+        callback: showPopup,
         detail: item.id,
         seconds: item.startTime - currentTime
       };
     } else {
       return {
         name: "hidePopup",
-        func: hidePopup,
+        callback: hidePopup,
         detail: item.id,
         seconds: item.endTime - currentTime
       };
@@ -49,10 +50,10 @@ function getNextEvent(currentTime) {
 }
 
 function scheduleNextEvent() {
+  clearEvents();
+
   let event = getNextEvent(video.currentTime);
   console.log(event);
- 
-  clearEvents();
   if (event) {
     if (event.name == "showPopup") {
       setVisible(false);
@@ -63,38 +64,6 @@ function scheduleNextEvent() {
     scheduleEvent(event);
   } else {
     setVisible(false);
-  }
-}
-
-let timeout;
-let eventNames = [];
-
-// Schedules an event using AlarmManager if running on Senza, otherwise sets a timeout.
-// The event should have the following properties:
-//  - name: string
-//  - func: function
-//  - seconds: number
-//  - detail: an event with this property will be passed to the function
-function scheduleEvent(event) {
-  if (isRunningE2E()) {
-    if (!eventNames.includes(event.name)) {
-      alarmManager.addEventListener(event.name, async (e) => {
-        await moveToForegroundIfNeeded();
-        event.func(e);
-      });
-      eventNames.push(event.name);
-    }
-    alarmManager.addAlarm(event.name, Date.now() + event.seconds * 1000, event.detail);
-  } else {
-    timeout = setTimeout(() => event.func(event), event.seconds * 1000);
-  }
-}
-
-function clearEvents() {
-  if (isRunningE2E()) {
-    alarmManager.deleteAllAlarms();
-  } else {
-    clearTimeout(timeout);
   }
 }
 
@@ -156,13 +125,6 @@ document.addEventListener("keydown", async function (event) {
   }
   event.preventDefault();
 });
-
-async function moveToForegroundIfNeeded() {
-  if (lifecycle.state == lifecycle.UiState.BACKGROUND ||
-      lifecycle.state == lifecycle.UiState.IN_TRANSITION_TO_BACKGROUND) {
-    await lifecycle.moveToForeground();
-  }
-}
 
 async function toggleBackground() {
   if (lifecycle.state == lifecycle.UiState.BACKGROUND) {
